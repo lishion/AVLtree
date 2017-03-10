@@ -15,7 +15,7 @@
 using namespace std;
 class AVLTree {
 public:
-    enum  class TYPE{LL=0X66,LR=0X69,RL=0X96,RR=0X99,BALANCE=0XFF};
+    enum  class TYPE{LL=0X66,LR=0X69,RL=0X96,RR=0X99,LLS = 0XFF,RRS = 0X00};
     enum  class LINK_TYPE{LEFT=0,RIGHT};
     const LINK_TYPE LEFT = LINK_TYPE ::LEFT;
     const LINK_TYPE RIGHT = LINK_TYPE :: RIGHT;
@@ -35,7 +35,7 @@ private:
             stringstream ss;
 
             ss<<" value: "<<value
-              <<" father: "<<convertToString(father)
+            //  <<" father: "<<convertToString(father)
               <<" left: "<<convertToString(left)
               <<" right: "<<convertToString(right)
               <<" BF: "<<BF<<endl;
@@ -107,7 +107,7 @@ private:
         Node *n = nullptr;
         auto func = [&x,&n]( Node *now_node){
 
-            if(now_node->value > x){
+            if(now_node->value >= x){
                 x = now_node->value;
                 n = now_node;
             }
@@ -118,68 +118,83 @@ private:
 
     //一般情况删除
     //
-    void deleteGeneral(Node *node){
+    Node *deleteGeneral(Node *node){
 
         Node *child = ( node->left == nullptr  ?  node->right : node->left );//只有一个子节点，先找到该子节点,如果返回空 则表示没有子节点
         Node *father = node->father;
 
-        if(father == nullptr ){//如果不存在父节点 直接将子节点指向空
-            child->father = nullptr;
-            releaseNode(node);
-            return;
+        if(  node == root    ){ // 如果该节点是根节点
+
+           if(child == nullptr){//如果子节点为空  直接删除子节点
+               delete root;
+               root = nullptr;
+           } else{
+               setAsRoot(child);//子节点不为空，则先将此节点的子节点设置为根节点 然后删除该节点
+               releaseNode(node);
+           }
+            return nullptr;
         }
 
-        //这里也可以根据值的大小判断
-        //(node->value > father->value )? (右):(左)
-        (father->left == node) ? (father->left = child) : (father->right = child);//将原来指向该节点的指针指向子节点
-
-
-        if( child != nullptr ){
-            child->father = father;//如果子节点不为空 将子节点指向父节点
-        }
+        reLink(node,child);//将原来指向该节点的指针指向子节点
 
         releaseNode(node);
+        return  father;
     }
 
-    //有两个子节点情况的删除
-    void deleteDoubleChild(Node *node){
 
-        Node *n = findMaxNode(node->left);//找到左子树最大的节点
-        node->value = n->value;//todo 应该改为替换指针，覆盖只是简单情况
-        deleteGeneral(n);//删除最大节点
-    }
-    
-    //回溯 得到最小不平衡子树的根节点
-    Node *reBack(Node *start_node){
+   template <typename T>
+   Node *reBack(Node *start_node,T func){
 
-        Node *now_node = start_node;
+       Node *now_node = start_node;
+       while(now_node != nullptr){
 
-        while(now_node->father !=  nullptr){//直到根节点
-            int &BF = now_node->father->BF;//获取父节点的BF值
-            (now_node->father->left == now_node) ? BF++ : BF--;//插在左子树增加 插在右子树减少
-            if(BF == 0){
-                return nullptr;//停止回溯
+           int &BF = now_node->BF;
+           if( func(now_node,BF) ){
+               return nullptr;
+           }
+           if(abs(BF) == 2){
+               return now_node;//找到失衡节点 退出
+           }
+
+           now_node = now_node->father;//更新回溯节点
+       }
+       return nullptr;
+   }
+    Node *rebackWhenDelete(Node *startNode){
+        Node *now_Node = startNode;
+        if(startNode == root) return nullptr;
+        while (now_Node!= nullptr){
+
+
+            int &BF = now_Node->father->BF;
+            ( getLinkType(now_Node) == LEFT ) ? BF-- : BF ++;
+            if(abs(BF) == 1) {
+                return nullptr;
             }
             else if(abs(BF) == 2){
-                return now_node->father;//找到失衡节点 退出
+                return  now_Node->father;
             }
-            now_node = now_node->father;//更新回溯节点
+            now_Node = now_Node->father ;
+            if(now_Node == root){
+                return nullptr;
+            }
         }
 
-        return nullptr;
-
     }
+
+
+
 
     //得到失衡类型 只需要引起失衡的节点和失衡的节点即可
     //target_node: 引起失衡的节点
     //inbalace_node: 不平衡节点
-    TYPE getInbalanceType(Node *target_node,Node *inbalance_node){
+    TYPE getInbalanceType(Node *inbalance_node){
 
         unsigned char code = 0x00;
         Node *next_node = nullptr;
         //判断位于根的左边还是右边
 
-        if( (target_node->value) >= (inbalance_node->value) ){
+        if( inbalance_node->BF <0 ){
             code |= 0x90;//右子树
             next_node = inbalance_node->right;
         } else{
@@ -187,16 +202,31 @@ private:
             next_node = inbalance_node->left;
         }
 
-        (next_node->BF < 0) ? code |= 0x09 : code |= 0x06;
+        if(next_node == nullptr){
+            visitNode(inbalance_node->father,[]( Node *node){cout<<node->toString()<<endl;} );
+        }
+
+        switch (next_node->BF){
+            case 0:  if(inbalance_node->BF < 0){
+                    code &= 0x00;
+                }
+                else{
+                    code |= 0xff;
+                }
+                break;
+            case 1: code |= 0x06;
+                break;
+            case -1: code |= 0x09;
+                break;
+            default:;
+        }
 
         return  (TYPE)code;
     }
 
     //判断该节点连接在父节点的左枝还是右枝
     LINK_TYPE getLinkType(Node *node){
-        if(node->father == nullptr){
-            cout<<"ttttt"<<endl;
-        }
+
         return ( node->father->left == node )? LEFT : RIGHT;
     }
 
@@ -224,6 +254,7 @@ private:
          createLink(node->father,target_node,getLinkType(node));
     }
 
+
     //左旋节点
     //左旋时，右子节点一定存在
     //左旋定义:
@@ -244,14 +275,14 @@ private:
             reLink(node,node->right);            //1
         }
 
-        bool isRoot = (node->father == nullptr) ;
+        bool isRoot = (node->father == nullptr) ;//判断该节点是否是头结点
 
         Node *temp_node = node->right->left;     //2
         createLink(node->right,node,LEFT);      //3
         createLink(node,temp_node,RIGHT);       //4
 
         if(isRoot){
-            setAsRoot(node->father);
+            setAsRoot(node->father);//将该节点的新父节点作为头结点
         }
 
         if(B1 > 0){
@@ -277,6 +308,10 @@ private:
 
         int B2 = node->BF;
         int B1 = node->left->BF;
+
+        if(node->value == 52){
+            node->value = 52;
+        }
         Node *temp_left_node = node->left;
 
         if(node->father != nullptr){
@@ -317,25 +352,23 @@ public:
     void  visitTree(){
         if(root == nullptr)
             return;
+
         visitNode(root,[]( Node *node){cout<<node->toString()<<endl;} );
     }
 
     void doBanlance(Node *node,TYPE type){
 
         switch(type){
+            case TYPE ::LLS :
             case TYPE::LL : rotateRight(node);
-
                 break;
             case TYPE::LR : rotateLeft(node->left);rotateRight(node);
-
                 break;
+            case TYPE ::RRS :
             case TYPE::RR : rotateLeft(node);
-
                 break;
             case TYPE::RL :rotateRight(node->right);rotateLeft(node);
-
                 break;
-            default:;
         }
     }
 
@@ -357,36 +390,82 @@ public:
         };
 
         Node *node =  findByValue(root,value,func);//找到存放节点
-        Node *wnode = createNode(value);//建立新节点
+        Node *new_node = createNode(value);//建立新节点
 
-        wnode->father = node;
-        (value >= node->value) ? node->right = wnode : node->left = wnode;//建立链接关系
+        new_node->father = node;
+        (value >= node->value) ? node->right = new_node : node->left = new_node;//建立链接关系
 
-        Node *inbalance = reBack(wnode);
+        auto func2 = [value](Node *now_node,int &BF){
+            (value >= now_node->value) ? BF-- : BF++;//插在左子树增加 插在右子树减少
+            return  BF == 0 ;
+        };
+
+        Node *inbalance = reBack(new_node->father,func2);
 
         if(inbalance != nullptr){
 
-             doBanlance(inbalance,getInbalanceType(wnode,inbalance));
+             doBanlance(inbalance,getInbalanceType(inbalance));
         }
 
-        return wnode;
+        return new_node;
 
     }
 
     void deleteNode(int value){
 
-        Node *node = findByValue(root,value,
-                                 [value](Node *now_node){return now_node->value == value;});//先找到要删除的节点
-        if(node == nullptr){
-            return;
-        }
+       while(true){
+           Node *node = findByValue(root,value,
+                                    [value](Node *now_node){return now_node->value == value;} );//先找到要删除的节点
+           if(node == nullptr){
+               return;
+           }
+           deleteHelper(node);
+       }
+    }
+
+    void deleteHelper(Node *node){
+        Node* inbalance_array[32] = {nullptr};
+
+        Node *real_delete_node = nullptr;
+        //如果该节点的两个子节点都存在 则需要用左子树最大的节点和该节点交换 然后删除该节点
 
         if(node->left != nullptr && node->right != nullptr){
-            deleteDoubleChild(node);//两个子节点都存在的情况
+             real_delete_node = findMaxNode(node->left);
         }
         else {
-            deleteGeneral(node);//只有一个  或没有子节点的情况
+            real_delete_node = node;
         }
+
+        Node *inbalance_node =  rebackWhenDelete(real_delete_node);//在删除前回溯 回溯起点为真正的删除点
+
+        node->value = real_delete_node->value;
+        deleteGeneral( real_delete_node );
+
+
+        for(int i=0;  inbalance_node != nullptr;i++ ){
+
+                TYPE type = getInbalanceType(inbalance_node);
+                inbalance_array[i] = inbalance_node;
+
+                if(type == TYPE::LLS || type == TYPE::RRS || inbalance_node == root){
+                    break;
+                }
+
+
+                inbalance_node = rebackWhenDelete(inbalance_node);
+
+        }
+
+
+        for (int i=0; inbalance_array[i] != nullptr; i++){
+            TYPE type = getInbalanceType(inbalance_array[i]);
+            doBanlance(inbalance_array[i],type);
+            i++;
+        }
+
+
+
+
 
     }
 
