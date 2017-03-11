@@ -7,7 +7,7 @@
 #include "time.h"
 #include "algorithm"
 using namespace std;
-#define NUM 1000
+#define NUM 100000
 int main() {
 
     AVLTree avlTree;
@@ -18,16 +18,17 @@ int main() {
 
         vecint.push_back(i);
         avlTree.insert(i);
+
     }
     random_shuffle(vecint.begin(),vecint.end());
-    for(int i=0;i<NUM-8;i++){
 
-        avlTree.deleteNode(vecint.at(i));
+    for(int i=0;i<(NUM-8);i++){
+
+        avlTree.remove(vecint.at(i));
+
     }
 
     avlTree.visitTree();
-
-
 
 
     return 0;
